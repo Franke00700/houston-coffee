@@ -17,3 +17,4 @@ test-artifacts/tls/
 test-artifacts/
 HOUSTON_COFFEE_REPORT.md
 HOUSTON_COFFEE_VERIFICATION_REPORT.md
+.neon
