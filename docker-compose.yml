@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: houston_coffee
+      POSTGRES_USER: houston_owner
+      POSTGRES_PASSWORD: local-development-only
+    ports:
+      - "5432:5432"
+    volumes:
+      - houston_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U houston_owner -d houston_coffee"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  houston_pgdata:

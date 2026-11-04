@@ -1,0 +1,268 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum StaffRole {
+  ADMIN
+  OPERATOR
+}
+
+enum FulfillmentType {
+  PICKUP
+  DELIVERY
+}
+
+enum OrderStatus {
+  NEW
+  CONFIRMED
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum ModifierGroupKind {
+  MILK
+  ADD_ON
+}
+
+model StaffUser {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  name         String
+  passwordHash String
+  role         StaffRole
+  active       Boolean        @default(true)
+  tokenVersion Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  sessions     StaffSession[]
+  auditEvents  AuditEvent[]
+  statusEvents OrderStatusEvent[]
+}
+
+model StaffSession {
+  id           String    @id @default(cuid())
+  tokenHash    String    @unique
+  csrfHash     String
+  userId       String
+  tokenVersion Int
+  createdAt    DateTime  @default(now())
+  lastSeenAt   DateTime  @default(now())
+  expiresAt    DateTime
+  absoluteAt   DateTime
+  userAgent    String?
+  ipHash       String?
+  user         StaffUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  slug      String    @unique
+  name      String
+  sortOrder Int       @default(0)
+  published Boolean   @default(false)
+  archived  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+}
+
+model Product {
+  id            String                 @id @default(cuid())
+  categoryId    String
+  slug          String                 @unique
+  name          String
+  description   String                 @default("")
+  imageId       String?
+  sortOrder     Int                    @default(0)
+  published     Boolean                @default(false)
+  available     Boolean                @default(false)
+  delivery      Boolean                @default(true)
+  archived      Boolean                @default(false)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  category      Category               @relation(fields: [categoryId], references: [id])
+  image         ProductImage?          @relation(fields: [imageId], references: [id], onDelete: SetNull)
+  variants      ProductVariant[]
+  modifierGroups ProductModifierGroup[]
+
+  @@index([categoryId, sortOrder])
+}
+
+model ProductVariant {
+  id         String   @id @default(cuid())
+  productId  String
+  name       String
+  sku        String?  @unique
+  priceMinor Int
+  available  Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  archived   Boolean  @default(false)
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+}
+
+model ModifierGroup {
+  id        String                 @id @default(cuid())
+  name      String
+  kind      ModifierGroupKind
+  minSelect Int                    @default(0)
+  maxSelect Int                    @default(1)
+  archived  Boolean                @default(false)
+  options   ModifierOption[]
+  products  ProductModifierGroup[]
+}
+
+model ModifierOption {
+  id         String        @id @default(cuid())
+  groupId    String
+  name       String
+  priceMinor Int           @default(0)
+  available  Boolean       @default(true)
+  sortOrder  Int           @default(0)
+  archived   Boolean       @default(false)
+  group      ModifierGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, sortOrder])
+}
+
+model ProductModifierGroup {
+  productId String
+  groupId   String
+  sortOrder Int           @default(0)
+  product   Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  group     ModifierGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([productId, groupId])
+}
+
+model ProductImage {
+  id        String    @id @default(cuid())
+  storageKey String   @unique
+  mimeType  String
+  width     Int
+  height    Int
+  bytes     Int
+  alt       String
+  createdAt DateTime  @default(now())
+  products  Product[]
+}
+
+model SiteSettings {
+  id                    Int      @id @default(1)
+  ordersEnabled         Boolean  @default(true)
+  pickupEnabled         Boolean  @default(true)
+  deliveryEnabled       Boolean  @default(false)
+  deliveryFeeMinor      Int      @default(0)
+  deliveryMinimumMinor  Int      @default(0)
+  currency              String   @default("RUB")
+  phone                  String?
+  address                String?
+  routeUrl               String?
+  instagramUrl           String?
+  telegramUrl            String?
+  notice                 String?
+  updatedAt              DateTime @updatedAt
+}
+
+model ScheduleEntry {
+  id        String  @id @default(cuid())
+  dayOfWeek Int
+  opensAt   String?
+  closesAt  String?
+  closed    Boolean @default(true)
+
+  @@unique([dayOfWeek])
+}
+
+model Order {
+  id                 String             @id @default(cuid())
+  number             String             @unique
+  status             OrderStatus        @default(NEW)
+  fulfillment        FulfillmentType
+  customerName       String
+  customerPhone      String
+  deliveryAddress    String?
+  requestedFor       DateTime?
+  comment             String?
+  currency            String
+  subtotalMinor       Int
+  deliveryFeeMinor   Int
+  totalMinor          Int
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  items               OrderItem[]
+  statusEvents        OrderStatusEvent[]
+  idempotency         OrderIdempotency?
+
+  @@index([status, createdAt])
+}
+
+model OrderItem {
+  id                 String   @id @default(cuid())
+  orderId            String
+  productId          String?
+  variantId          String?
+  productName        String
+  variantName        String
+  quantity           Int
+  unitBasePriceMinor Int
+  unitTotalMinor     Int
+  lineTotalMinor     Int
+  modifiersSnapshot Json
+  order              Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+model OrderIdempotency {
+  id          String   @id @default(cuid())
+  keyHash     String   @unique
+  payloadHash String
+  orderId     String   @unique
+  response    Json
+  createdAt   DateTime @default(now())
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model OrderStatusEvent {
+  id        String      @id @default(cuid())
+  orderId   String
+  actorId   String?
+  from      OrderStatus?
+  to        OrderStatus
+  reason    String?
+  createdAt DateTime    @default(now())
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actor     StaffUser?  @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+}
+
+model AuditEvent {
+  id        String     @id @default(cuid())
+  actorId   String?
+  actorRole StaffRole?
+  action    String
+  entity    String
+  entityId  String?
+  requestId String?
+  success   Boolean    @default(true)
+  before    Json?
+  after     Json?
+  createdAt DateTime   @default(now())
+  actor     StaffUser? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}

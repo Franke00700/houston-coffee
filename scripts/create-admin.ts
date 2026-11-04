@@ -1,0 +1,21 @@
+import "dotenv/config";
+import { stdin, stdout } from "node:process";
+import { createInterface } from "node:readline/promises";
+import argon2 from "argon2";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "../src/generated/prisma/client";
+
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) throw new Error("DATABASE_URL is required");
+const rl = createInterface({ input: stdin, output: stdout });
+const email = (await rl.question("Admin email: ")).trim().toLowerCase();
+const name = (await rl.question("Admin name: ")).trim();
+const password = await rl.question("Temporary password (min 12 chars): ");
+rl.close();
+if (!/^\S+@\S+\.\S+$/.test(email) || name.length < 2 || password.length < 12) throw new Error("Invalid email, name or password");
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+const passwordHash = await argon2.hash(password, { type: argon2.argon2id, memoryCost: 65536, timeCost: 3, parallelism: 1 });
+const user = await prisma.staffUser.create({ data: { email, name, passwordHash, role: "ADMIN" } });
+await prisma.auditEvent.create({ data: { actorId: user.id, actorRole: "ADMIN", action: "STAFF_BOOTSTRAP", entity: "StaffUser", entityId: user.id } });
+await prisma.$disconnect();
+stdout.write(`Created admin ${user.email}\n`);
